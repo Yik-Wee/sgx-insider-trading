@@ -1,9 +1,9 @@
 # https://stackoverflow.com/questions/68261052/pypdf-unable-to-read-xfa-pdf-file-after-it-has-been-filled-in-using-itextsharp
 from pathlib import Path
 from typing import Union
+import xml.etree.ElementTree as ET
 from pypdf import PdfReader
 from pypdf._reader import StrByteType
-import xml.etree.ElementTree as ET
 
 
 class PdfParserException(Exception):
@@ -29,27 +29,15 @@ def extract_xml_from_xfa(
     Exceptions
     ------
     Raises `PdfParserException`
-    - if there is no `/Root`, `/AcroForm` or `/XFA` in the pdf
-    - if the xml was unable to be decoded or parsed
+    - if an XFA was unable to be extracted
+    - if the XML was unable to be decoded to UTF-8 or parsed
     """
 
     reader = PdfReader(stream)
+    if reader.xfa is None:
+        raise PdfParserException("No XFA in PDF")
 
-    try:
-        root = reader.trailer["/Root"]
-        acro_form = root["/AcroForm"]
-        xfa = acro_form["/XFA"]
-    except Exception as err:
-        raise PdfParserException("Missing attribute in pdf") from err
-
-    xml = None
-
-    # find element after 'datasets', it is the xml object
-    # pylint: disable=C0200
-    for i in range(len(xfa)):
-        if xfa[i] == "datasets":
-            xml = xfa[i + 1].get_object().get_data()
-
+    xml = reader.xfa.get("datasets")
     if xml is None:
         return None
 
@@ -67,6 +55,19 @@ def extract_xml_from_xfa(
 
 
 def xml_get_text(root: ET.Element, field: str) -> str:
+    """
+    Params
+    ------
+    root: `ET.Element`
+    - The xml root
+
+    field: `str`
+    - The field to extract text from
+
+    Returns
+    ------
+    the element's text, or empty str `""` if element not found or element has no text
+    """
     element = root.find(f".//{field}")
     if element is None:
         return ""
@@ -74,23 +75,3 @@ def xml_get_text(root: ET.Element, field: str) -> str:
     if element.text is None:
         return ""
     return element.text
-
-
-class XfaWriter:
-    def __init__(self) -> None:
-        pass
-
-    def write(self, field: str, value: str, **kwargs) -> bool:
-        """
-        Write the `value` to the xml `field`, with `**kwargs` according to
-        the `Element.find(..., **kwargs)` method
-        """
-        pass
-
-    def __render(self) -> bool:
-        """Render the XFA form into bytes"""
-        pass
-
-    def save_pdf(self, path: str) -> None:
-        """Save the XFA Form to a pdf to the specified file `path`"""
-        pass
